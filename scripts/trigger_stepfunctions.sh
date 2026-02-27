@@ -2,12 +2,39 @@
 set -e
 
 echo "========================================="
-echo "Triggering 1,000 Step Functions Executions"
+echo "Triggering Step Functions Executions"
 echo "========================================="
 echo ""
 
-STATE_MACHINE_ARN="arn:aws:states:us-east-1:YOUR_AWS_ACCOUNT_ID:stateMachine:ETL-Pipeline-StateMachine"
-BUCKET="etl-stepfn-rawdatabucket-vjseqyewtowe"
+# Get state machine ARN from CloudFormation
+echo "Getting state machine ARN from CloudFormation..."
+STATE_MACHINE_ARN=$(aws cloudformation describe-stacks \
+  --stack-name etl-stepfn \
+  --query 'Stacks[0].Outputs[?OutputKey==`StateMachineArn`].OutputValue' \
+  --output text)
+
+if [ -z "$STATE_MACHINE_ARN" ]; then
+    echo "❌ Error: Could not find state machine ARN. Make sure etl-stepfn stack is deployed."
+    exit 1
+fi
+
+echo "State Machine: $STATE_MACHINE_ARN"
+echo ""
+
+# Get bucket name from CloudFormation
+echo "Getting S3 bucket name from CloudFormation..."
+BUCKET=$(aws cloudformation describe-stacks \
+  --stack-name etl-stepfn \
+  --query 'Stacks[0].Outputs[?OutputKey==`RawDataBucket`].OutputValue' \
+  --output text)
+
+if [ -z "$BUCKET" ]; then
+    echo "❌ Error: Could not find S3 bucket. Make sure etl-stepfn stack is deployed."
+    exit 1
+fi
+
+echo "S3 Bucket: $BUCKET"
+echo ""
 
 # Get list of files from S3
 echo "Getting list of files from S3..."

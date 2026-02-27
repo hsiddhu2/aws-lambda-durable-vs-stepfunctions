@@ -24,37 +24,64 @@ echo ""
 echo "Step 1: Empty S3 buckets (required before deletion)"
 echo "==================================================="
 
-RAW_BUCKET="etl-raw-data-bucket-YOUR_AWS_ACCOUNT_ID"
-PROCESSED_BUCKET="etl-processed-data-bucket-YOUR_AWS_ACCOUNT_ID"
+# Get bucket names from CloudFormation stacks
+echo "Getting bucket names from CloudFormation..."
+RAW_BUCKET=$(aws cloudformation describe-stacks \
+  --stack-name etl-durable \
+  --query 'Stacks[0].Outputs[?OutputKey==`RawDataBucket`].OutputValue' \
+  --output text 2>/dev/null)
 
-echo "Emptying raw bucket..."
-aws s3 rm "s3://$RAW_BUCKET" --recursive 2>/dev/null || echo "Bucket already empty or doesn't exist"
+PROCESSED_BUCKET=$(aws cloudformation describe-stacks \
+  --stack-name etl-durable \
+  --query 'Stacks[0].Outputs[?OutputKey==`ProcessedDataBucket`].OutputValue' \
+  --output text 2>/dev/null)
 
-echo "Emptying processed bucket..."
-aws s3 rm "s3://$PROCESSED_BUCKET" --recursive 2>/dev/null || echo "Bucket already empty or doesn't exist"
+if [ ! -z "$RAW_BUCKET" ]; then
+  echo "Emptying raw bucket: $RAW_BUCKET..."
+  aws s3 rm "s3://$RAW_BUCKET" --recursive 2>/dev/null || echo "Bucket already empty or doesn't exist"
+else
+  echo "Raw bucket not found or already deleted"
+fi
+
+if [ ! -z "$PROCESSED_BUCKET" ]; then
+  echo "Emptying processed bucket: $PROCESSED_BUCKET..."
+  aws s3 rm "s3://$PROCESSED_BUCKET" --recursive 2>/dev/null || echo "Bucket already empty or doesn't exist"
+else
+  echo "Processed bucket not found or already deleted"
+fi
 
 echo ""
 echo "Step 2: Stop all running Step Functions executions"
 echo "==================================================="
 
-STEP_FUNCTION_ARN="arn:aws:states:us-east-1:YOUR_AWS_ACCOUNT_ID:stateMachine:ETL-Pipeline-StateMachine"
+# Get state machine ARN from CloudFormation
+STEP_FUNCTION_ARN=$(aws cloudformation describe-stacks \
+  --stack-name etl-stepfn \
+  --query 'Stacks[0].Outputs[?OutputKey==`StateMachineArn`].OutputValue' \
+  --output text 2>/dev/null)
 
-RUNNING_EXECUTIONS=$(aws stepfunctions list-executions \
-  --state-machine-arn "$STEP_FUNCTION_ARN" \
-  --status-filter RUNNING \
-  --max-results 1000 \
-  --output json 2>/dev/null | jq -r '.executions[].executionArn')
-
-if [ -z "$RUNNING_EXECUTIONS" ]; then
-  echo "No running executions found."
+if [ -z "$STEP_FUNCTION_ARN" ]; then
+  echo "State machine not found or already deleted"
 else
-  echo "Stopping running executions..."
-  echo "$RUNNING_EXECUTIONS" | while read -r execution_arn; do
-    if [ ! -z "$execution_arn" ]; then
-      aws stepfunctions stop-execution --execution-arn "$execution_arn" 2>/dev/null || true
-    fi
-  done
-  echo "All executions stopped."
+  echo "State machine: $STEP_FUNCTION_ARN"
+  
+  RUNNING_EXECUTIONS=$(aws stepfunctions list-executions \
+    --state-machine-arn "$STEP_FUNCTION_ARN" \
+    --status-filter RUNNING \
+    --max-results 1000 \
+    --output json 2>/dev/null | jq -r '.executions[].executionArn')
+
+  if [ -z "$RUNNING_EXECUTIONS" ]; then
+    echo "No running executions found."
+  else
+    echo "Stopping running executions..."
+    echo "$RUNNING_EXECUTIONS" | while read -r execution_arn; do
+      if [ ! -z "$execution_arn" ]; then
+        aws stepfunctions stop-execution --execution-arn "$execution_arn" 2>/dev/null || true
+      fi
+    done
+    echo "All executions stopped."
+  fi
 fi
 
 echo ""

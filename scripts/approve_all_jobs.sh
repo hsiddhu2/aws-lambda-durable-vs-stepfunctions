@@ -5,8 +5,8 @@
 
 set -e
 
-REVIEWER=${1:-"Harry"}
-REASON=${2:-"Batch approval for comparison study"}
+REVIEWER=${1:-"automated-reviewer"}
+REASON=${2:-"Batch approval for testing"}
 
 echo "========================================="
 echo "Approve All Pending Jobs"
