@@ -82,12 +82,6 @@ aws s3 cp test-data/ s3://etl-raw-data-bucket-YOUR_AWS_ACCOUNT_ID/uploads/ --rec
 ./scripts/approve_all_jobs.sh
 ```
 
-### Collect Metrics
-
-```bash
-python scripts/collect_blog_metrics.py
-```
-
 ## 📁 Repository Structure
 
 ```
@@ -112,8 +106,8 @@ python scripts/collect_blog_metrics.py
 ├── scripts/                   # Utility scripts
 │   ├── generate_test_data.py
 │   ├── approve_all_jobs.sh
-│   ├── collect_blog_metrics.py
-│   └── cleanup_all_resources.sh
+│   ├── trigger_stepfunctions.sh
+│   └── delete_all_stacks.sh
 │
 ├── docs/                      # Documentation and diagrams
 │   ├── architecture_diagram.png
