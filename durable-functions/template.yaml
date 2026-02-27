@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Lambda Durable Functions ETL Pipeline
+
+Parameters:
+  RawBucketName:
+    Type: String
+    Default: etl-raw-data-bucket
+  ProcessedBucketName:
+    Type: String
+    Default: etl-processed-data-bucket
+
+Globals:
+  Function:
+    Runtime: python3.14
+    Architectures:
+      - arm64
+    MemorySize: 512
+    Timeout: 900
+
+Resources:
+  RawDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${RawBucketName}-${AWS::AccountId}"
+
+  ProcessedDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProcessedBucketName}-${AWS::AccountId}"
+
+  ETLMetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: etl-job-metadata
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: jobId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: jobId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
+  ETLOrchestratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ETLDurableOrchestrator
+      CodeUri: ./src
+      Handler: handlers/etl_handler.lambda_handler
+      MemorySize: 1024
+      Timeout: 900
+      DurableConfig:
+        ExecutionTimeout: 86400
+        RetentionPeriodInDays: 14
+      AutoPublishAlias: live
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - S3CrudPolicy:
+            BucketName: !Sub "${RawBucketName}-${AWS::AccountId}"
+        - S3CrudPolicy:
+            BucketName: !Sub "${ProcessedBucketName}-${AWS::AccountId}"
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ETLMetadataTable
+        - DynamoDBCrudPolicy:
+            TableName: etl-pending-approvals
+        - SNSPublishMessagePolicy:
+            TopicName: etl-approval-notifications
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - states:*
+              Resource: '*'
+      Events:
+        S3Upload:
+          Type: S3
+          Properties:
+            Bucket: !Ref RawDataBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: uploads/
+                  - Name: suffix
+                    Value: .csv
+      Environment:
+        Variables:
+          PROCESSED_BUCKET: !Sub "${ProcessedBucketName}-${AWS::AccountId}"
+          METADATA_TABLE: !Ref ETLMetadataTable
+          APPROVALS_TABLE: etl-pending-approvals
+          APPROVAL_TOPIC_ARN: !ImportValue ETL-ApprovalTopicArn
+          APPROVAL_API_URL: !ImportValue ETL-ApprovalApiUrl
+
+Outputs:
+  ETLFunctionArn:
+    Value: !GetAtt ETLOrchestratorFunction.Arn
+  RawBucketArn:
+    Value: !GetAtt RawDataBucket.Arn

@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Step Functions ETL Pipeline (Comparison)
+
+Resources:
+  RawDataBucket:
+    Type: AWS::S3::Bucket
+
+  ProcessedDataBucket:
+    Type: AWS::S3::Bucket
+
+  ETLMetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: etl-stepfn-metadata
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: jobId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: jobId
+          KeyType: HASH
+
+  ExtractFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src
+      Handler: steps/extract_lambda.handler
+      Runtime: python3.14
+      MemorySize: 512
+      Timeout: 300
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref RawDataBucket
+
+  TransformFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src
+      Handler: steps/transform_lambda.handler
+      Runtime: python3.14
+      MemorySize: 512
+      Timeout: 300
+
+  LoadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src
+      Handler: steps/load_lambda.handler
+      Runtime: python3.14
+      MemorySize: 512
+      Timeout: 300
+      Environment:
+        Variables:
+          PROCESSED_BUCKET: !Ref ProcessedDataBucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref ProcessedDataBucket
+
+  FinalizeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src
+      Handler: steps/finalize_lambda.handler
+      Runtime: python3.14
+      MemorySize: 512
+      Timeout: 300
+      Environment:
+        Variables:
+          METADATA_TABLE: !Ref ETLMetadataTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ETLMetadataTable
+        - S3CrudPolicy:
+            BucketName: !Ref RawDataBucket
+
+  ApprovalFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src
+      Handler: steps/approval_lambda.handler
+      Runtime: python3.14
+      MemorySize: 256
+      Timeout: 60
+      Environment:
+        Variables:
+          APPROVALS_TABLE: etl-pending-approvals
+          APPROVAL_TOPIC_ARN: !ImportValue ETL-ApprovalTopicArn
+          APPROVAL_API_URL: !ImportValue ETL-ApprovalApiUrl
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: etl-pending-approvals
+        - SNSPublishMessagePolicy:
+            TopicName: etl-approval-notifications
+
+  ETLStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: ETL-Pipeline-StateMachine
+      DefinitionUri: statemachine/etl-workflow.asl.json
+      DefinitionSubstitutions:
+        ExtractFunctionArn: !GetAtt ExtractFunction.Arn
+        TransformFunctionArn: !GetAtt TransformFunction.Arn
+        LoadFunctionArn: !GetAtt LoadFunction.Arn
+        FinalizeFunctionArn: !GetAtt FinalizeFunction.Arn
+        ApprovalFunctionArn: !GetAtt ApprovalFunction.Arn
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ExtractFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref TransformFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref LoadFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref FinalizeFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ApprovalFunction
+
+Outputs:
+  StateMachineArn:
+    Description: ARN of the Step Functions state machine
+    Value: !Ref ETLStateMachine
+  RawBucketName:
+    Description: Name of the raw data bucket
+    Value: !Ref RawDataBucket
+  ProcessedBucketName:
+    Description: Name of the processed data bucket
+    Value: !Ref ProcessedDataBucket

@@ -1,0 +1,5 @@
+id,name,date,amount,quantity,region
+1,Widget A,2025-03-15,99.99,10,US-East
+2,Gadget X,2025-04-20,149.50,5,EU-West
+3,Tool Z,01/30/2025,75.00,20,AP-South
+,Invalid,,,

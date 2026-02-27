@@ -1,0 +1,97 @@
+{
+  "Comment": "ETL Pipeline - Step Functions Implementation",
+  "StartAt": "ExtractData",
+  "States": {
+    "ExtractData": {
+      "Type": "Task",
+      "Resource": "${ExtractFunctionArn}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "ResultPath": "$.extractResult",
+      "Next": "TransformData"
+    },
+    "TransformData": {
+      "Type": "Task",
+      "Resource": "${TransformFunctionArn}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 2
+        }
+      ],
+      "ResultPath": "$.transformResult",
+      "Next": "LoadData"
+    },
+    "LoadData": {
+      "Type": "Task",
+      "Resource": "${LoadFunctionArn}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3
+        }
+      ],
+      "ResultPath": "$.loadResult",
+      "Next": "WaitForApproval"
+    },
+    "WaitForApproval": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${ApprovalFunctionArn}",
+        "Payload": {
+          "taskToken.$": "$$.Task.Token",
+          "jobId.$": "$.loadResult.job_id",
+          "summary.$": "$.loadResult.summary"
+        }
+      },
+      "TimeoutSeconds": 86400,
+      "ResultPath": "$.approvalResult",
+      "Next": "CheckApproval",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.Timeout"],
+          "ResultPath": "$.approvalResult",
+          "Next": "JobRejected"
+        }
+      ]
+    },
+    "CheckApproval": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.approvalResult.approved",
+          "BooleanEquals": true,
+          "Next": "FinalizeJob"
+        }
+      ],
+      "Default": "JobRejected"
+    },
+    "JobRejected": {
+      "Type": "Pass",
+      "Result": {
+        "status": "REJECTED"
+      },
+      "End": true
+    },
+    "FinalizeJob": {
+      "Type": "Task",
+      "Resource": "${FinalizeFunctionArn}",
+      "End": true
+    }
+  }
+}

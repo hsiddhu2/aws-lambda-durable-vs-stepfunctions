@@ -1,0 +1,9 @@
+# SAM configuration file for automated deployment
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "etl-stepfn"
+region = "us-east-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true

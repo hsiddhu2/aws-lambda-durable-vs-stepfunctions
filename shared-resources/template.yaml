@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Shared resources for ETL approval workflow
+
+Parameters:
+  ApproverEmail:
+    Type: String
+    Description: Email address to receive approval notifications
+    Default: approver@example.com
+
+Resources:
+  # DynamoDB table to store pending approvals
+  PendingApprovalsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: etl-pending-approvals
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: jobId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: jobId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # SNS topic for approval notifications
+  ApprovalNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: etl-approval-notifications
+      DisplayName: ETL Job Approval Notifications
+      Subscription:
+        - Endpoint: !Ref ApproverEmail
+          Protocol: email
+
+  # API Gateway for approval endpoints
+  ApprovalApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: ETL-Approval-API
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+        AllowOrigin: "'*'"
+
+  # Lambda function to handle approval/rejection
+  ApprovalHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ETL-Approval-Handler
+      CodeUri: ./src
+      Handler: approval_handler.handler
+      Runtime: python3.14
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          APPROVALS_TABLE: !Ref PendingApprovalsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PendingApprovalsTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - states:SendTaskSuccess
+                - states:SendTaskFailure
+                - lambda:InvokeFunction
+                - lambda:SendDurableExecutionCallbackSuccess
+                - lambda:SendDurableExecutionCallbackFailure
+              Resource: '*'
+      Events:
+        ApproveJob:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApprovalApi
+            Path: /approve/{jobId}
+            Method: POST
+        RejectJob:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApprovalApi
+            Path: /reject/{jobId}
+            Method: POST
+        GetJobStatus:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApprovalApi
+            Path: /status/{jobId}
+            Method: GET
+
+Outputs:
+  PendingApprovalsTableName:
+    Description: Name of the pending approvals DynamoDB table
+    Value: !Ref PendingApprovalsTable
+    Export:
+      Name: ETL-PendingApprovalsTable
+
+  ApprovalTopicArn:
+    Description: ARN of the approval notification SNS topic
+    Value: !Ref ApprovalNotificationTopic
+    Export:
+      Name: ETL-ApprovalTopicArn
+
+  ApprovalApiUrl:
+    Description: URL of the approval API
+    Value: !Sub 'https://${ApprovalApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
+    Export:
+      Name: ETL-ApprovalApiUrl
+
+  ApprovalHandlerFunctionArn:
+    Description: ARN of the approval handler function
+    Value: !GetAtt ApprovalHandlerFunction.Arn
+    Export:
+      Name: ETL-ApprovalHandlerArn

@@ -1,0 +1,11 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "etl-shared-resources"
+s3_prefix = "etl-shared-resources"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+parameter_overrides = "ApproverEmail=\"hpsiddhu@gmail.com\""

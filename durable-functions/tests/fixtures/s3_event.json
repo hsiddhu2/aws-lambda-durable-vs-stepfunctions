@@ -1,0 +1,14 @@
+{
+  "Records": [
+    {
+      "s3": {
+        "bucket": {
+          "name": "etl-raw-data-bucket-123456789"
+        },
+        "object": {
+          "key": "uploads/sales_data.csv"
+        }
+      }
+    }
+  ]
+}
