@@ -198,7 +198,7 @@ S3 Upload → Step Functions State Machine
 - **Volume**: 1,000 documents per system
 - **Workflow**: Extract → Transform → Load → Approval → Finalize
 - **Approval wait**: Average 20 minutes
-- **Measurement**: 24-hour window (Feb 24, 2026)
+- **Measurement**: 24-hour window
 - **Data source**: AWS CloudWatch metrics
 - **Cost calculation**: Actual AWS pricing
 
@@ -275,22 +275,3 @@ Contributions are welcome! Please:
 ## 📄 License
 
 MIT License - see LICENSE file for details
-
-## 🙏 Acknowledgments
-
-- AWS Lambda Durable Functions team
-- AWS Step Functions team
-- AWS SAM team
-
-## 🔗 Related Resources
-
-- [AWS Lambda Durable Functions Documentation](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html)
-- [AWS Step Functions Developer Guide](https://docs.aws.amazon.com/step-functions/)
-- [AWS SAM Documentation](https://docs.aws.amazon.com/serverless-application-model/)
-- [Serverless Land Patterns](https://serverlessland.com/patterns)
-
----
-
-**Last Updated**: February 25, 2026  
-**Experiment Date**: February 24, 2026  
-**AWS Region**: us-east-1
