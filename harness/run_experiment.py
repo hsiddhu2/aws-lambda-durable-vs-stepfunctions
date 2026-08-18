@@ -219,13 +219,19 @@ def approve(api_url: str, job_id: str) -> bool:
         return False
 
 
-def approve_all(api_url: str, job_ids: list[str]) -> int:
-    ok = 0
-    for jid in job_ids:
-        if approve(api_url, jid):
-            ok += 1
-        time.sleep(0.2)
-    log(f"approved {ok}/{len(job_ids)} jobs")
+def approve_all(api_url: str, job_ids: list[str], workers: int = 20) -> int:
+    """Approve jobs concurrently. The old serial 0.2s-per-job loop cost ~33 min at
+    10k jobs and dominated each rep. A bounded thread pool (default 20 concurrent «
+    the ~280 unreserved approval-handler capacity, so no throttling) cuts that to
+    seconds. Approval speed does not affect any per-workflow cost counter."""
+    if not job_ids:
+        log("approved 0/0 jobs")
+        return 0
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        results = list(ex.map(lambda jid: approve(api_url, jid), job_ids))
+    ok = sum(1 for r in results if r)
+    log(f"approved {ok}/{len(job_ids)} jobs ({workers}-way concurrent)")
     return ok
 
 
