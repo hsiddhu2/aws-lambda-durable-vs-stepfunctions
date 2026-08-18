@@ -267,6 +267,30 @@ def count_durable_completed(ddb, table: str, status_attr: str, terminal: str,
     return n
 
 
+def count_sfn_running(sfn, arn: str) -> int:
+    n = 0
+    for page in sfn.get_paginator("list_executions").paginate(
+            stateMachineArn=arn, statusFilter="RUNNING"):
+        n += len(page["executions"])
+    return n
+
+
+def wait_sfn_idle(sfn, arn: str, timeout: int, interval: int, label: str) -> bool:
+    """Wait until the state machine has 0 RUNNING executions. Used to ISOLATE each sfn
+    rep's metric window: draining prior/orphaned executions before a window opens (and
+    before metric collection) stops their Lambda invocations from bleeding into this
+    rep's counts. Returns True if idle reached."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        r = count_sfn_running(sfn, arn)
+        if r == 0:
+            return True
+        log(f"{label}: waiting sfn idle ({r} running)")
+        time.sleep(interval)
+    log(f"{label}: WARN sfn not idle within {timeout}s")
+    return False
+
+
 def count_sfn_succeeded(sfn, arn: str, since: datetime) -> int:
     n = 0
     paginator = sfn.get_paginator("list_executions")
@@ -336,6 +360,12 @@ def run_one(arm: str, volume: int, rep: int, cfg: dict, resolved: dict, clients:
     rep_dir = os.path.join(HERE, cfg["test_data_dir"], run_id)
     files = generate_csvs(volume, rep_dir)
 
+    # Window isolation (sfn): drain any prior/orphaned RUNNING executions to 0 BEFORE the
+    # window opens, so their Lambda invocations cannot bleed into this rep's counts.
+    if arm == "sfn_standard":
+        wait_sfn_idle(clients["sfn"], resolved[arm]["sfn_arn"],
+                      to["completion"], to["poll_interval"], f"{run_id} pre-window")
+
     window_start = now()
     # etl-job-metadata.timestamp is written NAIVE (datetime.utcnow().isoformat()), so the
     # durable completion scan must compare against a naive UTC ISO string. A small backdate
@@ -363,6 +393,12 @@ def run_one(arm: str, volume: int, rep: int, cfg: dict, resolved: dict, clients:
     completed = wait_for_completion(
         arm, arm_cfg, {**clients, "sfn_arn": resolved[arm].get("sfn_arn")},
         volume, window_start, since_iso, to["completion"], to["poll_interval"])
+
+    # Window isolation (sfn): ensure THIS rep's executions are all finished (0 RUNNING)
+    # before the window closes, so the invocation/duration sums are exactly this rep.
+    if arm == "sfn_standard":
+        wait_sfn_idle(clients["sfn"], resolved[arm]["sfn_arn"],
+                      to["completion"], to["poll_interval"], f"{run_id} post-run")
 
     # 7. settle + collect. CloudWatch Lambda metrics lag several minutes behind the
     # invocation, so after an initial settle we POLL the fixed window (window_end frozen
