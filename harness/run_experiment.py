@@ -29,10 +29,16 @@ from datetime import datetime, timezone
 
 import boto3
 import yaml
+from botocore.config import Config
 
 from collect_metrics import MetricCollector, build_record
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+# Adaptive retry so Step Functions ListExecutions and DynamoDB scans survive API-level
+# ThrottlingException at high volume (thousands of executions / large tables) instead
+# of raising and failing the rep.
+_RETRY = Config(retries={"max_attempts": 12, "mode": "adaptive"})
 
 
 def now() -> datetime:
@@ -470,11 +476,11 @@ def main():
     region = cfg["region"]
     resolved = resolve_all(cfg, arms)
     clients = {
-        "s3": boto3.client("s3", region_name=region),
-        "lam": boto3.client("lambda", region_name=region),
-        "sfn": boto3.client("stepfunctions", region_name=region),
-        "ddb": boto3.client("dynamodb", region_name=region),      # for durable completion scan
-        "ddb_res": boto3.client("dynamodb", region_name=region),  # for approvals scan
+        "s3": boto3.client("s3", region_name=region, config=_RETRY),
+        "lam": boto3.client("lambda", region_name=region, config=_RETRY),
+        "sfn": boto3.client("stepfunctions", region_name=region, config=_RETRY),
+        "ddb": boto3.client("dynamodb", region_name=region, config=_RETRY),      # durable completion scan
+        "ddb_res": boto3.client("dynamodb", region_name=region, config=_RETRY),  # approvals scan
         "collector": MetricCollector(region),
     }
 

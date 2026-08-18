@@ -17,6 +17,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import boto3
+from botocore.config import Config
+
+# Adaptive retry so Step Functions ListExecutions / GetExecutionHistory and CloudWatch
+# reads survive API-level ThrottlingException (frequent once thousands of executions
+# accumulate) by backing off instead of raising -> the rep completes instead of failing.
+_RETRY = Config(retries={"max_attempts": 12, "mode": "adaptive"})
 
 
 def _utc(dt: datetime) -> datetime:
@@ -26,9 +32,9 @@ def _utc(dt: datetime) -> datetime:
 class MetricCollector:
     def __init__(self, region: str):
         self.region = region
-        self.cw = boto3.client("cloudwatch", region_name=region)
-        self.lam = boto3.client("lambda", region_name=region)
-        self.sfn = boto3.client("stepfunctions", region_name=region)
+        self.cw = boto3.client("cloudwatch", region_name=region, config=_RETRY)
+        self.lam = boto3.client("lambda", region_name=region, config=_RETRY)
+        self.sfn = boto3.client("stepfunctions", region_name=region, config=_RETRY)
 
     # ---- Lambda ----
     def function_memory_mb(self, name: str) -> Optional[int]:
