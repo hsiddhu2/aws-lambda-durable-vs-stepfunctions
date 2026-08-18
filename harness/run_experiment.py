@@ -219,19 +219,30 @@ def approve(api_url: str, job_id: str) -> bool:
         return False
 
 
-def approve_all(api_url: str, job_ids: list[str], workers: int = 20) -> int:
-    """Approve jobs concurrently. The old serial 0.2s-per-job loop cost ~33 min at
-    10k jobs and dominated each rep. A bounded thread pool (default 20 concurrent «
-    the ~280 unreserved approval-handler capacity, so no throttling) cuts that to
-    seconds. Approval speed does not affect any per-workflow cost counter."""
+def approve_all(api_url: str, job_ids: list[str], rate_per_sec: float = 50,
+                workers: int = 20) -> int:
+    """Approve jobs with a RATE-LIMITED thread pool.
+
+    Two failure modes to avoid: the old serial 0.2s loop cost ~33 min at 10k jobs
+    (too slow); an unbounded pool approves all 10k at once, so all workflows resume
+    simultaneously and blow past reserved concurrency -> Lambda throttling (durable
+    arm saw 162). Pacing SUBMISSIONS at rate_per_sec (matched to the injection rate)
+    keeps resume concurrency ~= rate*compute < reserved, while the pool absorbs
+    per-request latency. ~10k jobs approve in ~10000/rate seconds with zero throttles.
+    Approval speed does not affect any per-workflow cost counter."""
     if not job_ids:
         log("approved 0/0 jobs")
         return 0
     from concurrent.futures import ThreadPoolExecutor
+    delay = (1.0 / rate_per_sec) if rate_per_sec and rate_per_sec > 0 else 0
+    futures = []
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        results = list(ex.map(lambda jid: approve(api_url, jid), job_ids))
-    ok = sum(1 for r in results if r)
-    log(f"approved {ok}/{len(job_ids)} jobs ({workers}-way concurrent)")
+        for jid in job_ids:
+            futures.append(ex.submit(approve, api_url, jid))
+            if delay:
+                time.sleep(delay)
+        ok = sum(1 for f in futures if f.result())
+    log(f"approved {ok}/{len(job_ids)} jobs (rate~{rate_per_sec}/s, {workers}-way)")
     return ok
 
 
@@ -340,7 +351,7 @@ def run_one(arm: str, volume: int, rep: int, cfg: dict, resolved: dict, clients:
     # 5. wait for approvals + approve
     pending = wait_for_pending(clients["ddb_res"], cfg, arm_cfg, volume,
                                to["approval_appear"], to["poll_interval"])
-    approve_all(resolved["api_url"], pending)
+    approve_all(resolved["api_url"], pending, rate_per_sec=cfg.get("inject_rate_per_sec", 50))
 
     # 6. wait for completion
     completed = wait_for_completion(
