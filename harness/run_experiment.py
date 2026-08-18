@@ -485,8 +485,11 @@ def main():
                     rec = run_one(arm, volume, rep, cfg, resolved, clients)
                     all_records.append(rec)
                 except Exception as e:
-                    log(f"ERROR run {run_id} failed: {e}")
-                    raise
+                    # Continue-on-error: log and move on. No result file is written for
+                    # this rep, so a later resumable pass (or the runner's retry loop)
+                    # re-attempts it. One transient failure never aborts the matrix.
+                    log(f"ERROR run {run_id} failed (continuing): {type(e).__name__}: {e}")
+                    continue
     log(f"done: {len(all_records)} records total")
 
 
