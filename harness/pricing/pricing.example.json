@@ -1,0 +1,35 @@
+{
+  "_comment": "Pricing snapshot TEMPLATE. Copy to pricing_YYYY-MM-DD.json, fill real us-east-1 values from the official AWS pricing pages, and set each entry's \"verify\" to false only after a human confirms it against the cited source_url. cost_model.py reads the \".value\" of each priced node; \"verify\": true is surfaced in output so unconfirmed prices are flagged. NEVER hardcode a price outside this file.",
+  "snapshot_date": "YYYY-MM-DD",
+  "region": "us-east-1",
+  "currency": "USD",
+  "source_urls": [
+    "https://aws.amazon.com/lambda/pricing/",
+    "https://aws.amazon.com/step-functions/pricing/",
+    "https://aws.amazon.com/dynamodb/pricing/on-demand/",
+    "https://aws.amazon.com/s3/pricing/",
+    "https://aws.amazon.com/sns/pricing/"
+  ],
+  "lambda": {
+    "arm64": {
+      "request_per_million": {"value": 0.0, "verify": true, "unit": "USD per 1,000,000 requests"},
+      "gb_second": {"value": 0.0, "verify": true, "unit": "USD per GB-second"}
+    },
+    "free_tier": {"requests_per_month": 1000000, "gb_seconds_per_month": 400000, "applied": false}
+  },
+  "step_functions_standard": {
+    "state_transition_per_million": {"value": 0.0, "verify": true, "unit": "USD per 1,000,000 state transitions"},
+    "free_tier_transitions_per_month": 4000
+  },
+  "dynamodb": {
+    "write_request_unit_per_million": {"value": 0.0, "verify": true, "unit": "USD per 1,000,000 write request units (on-demand)"},
+    "read_request_unit_per_million": {"value": 0.0, "verify": true, "unit": "USD per 1,000,000 read request units (on-demand)"}
+  },
+  "s3": {
+    "put_per_1000": {"value": 0.0, "verify": true, "unit": "USD per 1,000 PUT/COPY/POST/LIST requests"},
+    "get_per_1000": {"value": 0.0, "verify": true, "unit": "USD per 1,000 GET/SELECT requests"}
+  },
+  "sns": {
+    "publish_per_million": {"value": 0.0, "verify": true, "unit": "USD per 1,000,000 standard-topic publishes"}
+  }
+}

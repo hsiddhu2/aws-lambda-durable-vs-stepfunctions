@@ -55,9 +55,11 @@ def handler(event, context):
             }
         
         approval_record = response['Item']
-        
-        # Handle GET status request
-        if http_method == 'GET':
+
+        # Only the /status route returns status. /approve and /reject perform the
+        # decision for EITHER method, so the emailed links (which browsers open with
+        # GET) are clickable AND the POST + curl flow keeps working unchanged.
+        if 'status' in path.lower():
             return {
                 'statusCode': 200,
                 'headers': {'Content-Type': 'application/json'},
@@ -69,16 +71,18 @@ def handler(event, context):
                     'workflowType': approval_record.get('workflowType')
                 })
             }
-        
-        # Parse request body for approval/rejection
+
+        # Parse request body for approval/rejection (GET clicks carry no body).
         body = {}
         if event.get('body'):
             body = json.loads(event.get('body', '{}'))
-        
-        reviewer = body.get('reviewer', 'api-user')
-        reason = body.get('reason', '')
-        
-        # Determine approval decision
+        # Allow reviewer/reason via query string for GET clicks.
+        qs = event.get('queryStringParameters') or {}
+
+        reviewer = body.get('reviewer') or qs.get('reviewer', 'api-user')
+        reason = body.get('reason') or qs.get('reason', '')
+
+        # Determine approval decision from the route.
         approved = 'approve' in path.lower()
         
         approval_response = {

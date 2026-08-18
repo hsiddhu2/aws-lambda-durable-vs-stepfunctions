@@ -1,0 +1,80 @@
+{
+  "arm": "sfn_standard",
+  "volume": 5,
+  "rep": 1,
+  "run_id": "sfn_standard-5-r1",
+  "region": "us-east-1",
+  "account": "975050220345",
+  "window": {
+    "start": "2026-08-18T03:02:29.304082+00:00",
+    "end": "2026-08-18T03:05:52.716664+00:00"
+  },
+  "workflows_requested": 5,
+  "workflows_completed": 5,
+  "functions": [
+    {
+      "name": "etl-stepfn-ExtractFunction-UkgGRaSaemgw",
+      "memory_mb": 512,
+      "invocations": 5.0,
+      "duration_ms_sum": 473.20000000000005,
+      "gb_seconds": 0.23660000000000003
+    },
+    {
+      "name": "etl-stepfn-TransformFunction-3QiQ8RpjZiYO",
+      "memory_mb": 512,
+      "invocations": 5.0,
+      "duration_ms_sum": 71.76,
+      "gb_seconds": 0.03588
+    },
+    {
+      "name": "etl-stepfn-LoadFunction-TlNokoUcH4lZ",
+      "memory_mb": 512,
+      "invocations": 5.0,
+      "duration_ms_sum": 508.15000000000003,
+      "gb_seconds": 0.254075
+    },
+    {
+      "name": "etl-stepfn-FinalizeFunction-1pDgwM59m2rd",
+      "memory_mb": 512,
+      "invocations": 5.0,
+      "duration_ms_sum": 794.59,
+      "gb_seconds": 0.397295
+    },
+    {
+      "name": "etl-stepfn-ApprovalFunction-oiniX2tUGo6t",
+      "memory_mb": 256,
+      "invocations": 5.0,
+      "duration_ms_sum": 1326.71,
+      "gb_seconds": 0.3316775
+    }
+  ],
+  "invocations": 25.0,
+  "duration_ms_sum": 3174.4100000000003,
+  "gb_seconds": 1.2555275000000001,
+  "state_transitions": {
+    "gross": 30.0,
+    "matched_executions": 5,
+    "sampled_executions": 5,
+    "sample_mean_per_exec": 6.0,
+    "sample_stdev": 0.0,
+    "method": "GetExecutionHistory StateEntered count; gross = mean * volume"
+  },
+  "dynamodb": {
+    "writes": 25.0,
+    "reads": 6.5
+  },
+  "s3": {
+    "puts": null,
+    "gets": null
+  },
+  "sns": {
+    "publishes": 5.0
+  },
+  "null_fields": [
+    "s3.gets",
+    "s3.puts"
+  ],
+  "notes": [
+    "s3 request counts are null unless S3 request metrics are enabled on the bucket."
+  ]
+}

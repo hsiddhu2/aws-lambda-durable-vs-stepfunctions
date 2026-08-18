@@ -2,6 +2,11 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Step Functions ETL Pipeline (Comparison)
 
+Globals:
+  Function:
+    Architectures:
+      - arm64
+
 Resources:
   RawDataBucket:
     Type: AWS::S3::Bucket

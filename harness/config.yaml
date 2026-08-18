@@ -1,0 +1,79 @@
+# Benchmark harness configuration — UCC 2026 cost comparison.
+# Resource identities are RESOLVED LIVE from CloudFormation at runtime where possible
+# (stack outputs / exports / stack resources). The literal values below are the
+# resolved snapshot as of 2026-08-12 and serve only as a fallback / audit record.
+
+region: us-east-1
+account: "975050220345"
+
+# Experiment matrix (full run; the dry run overrides these).
+volumes: [100, 1000, 10000]
+repetitions: 10
+reserved_concurrency: 50          # pinned on every arm function before each run
+
+pricing_snapshot: pricing/pricing_2026-08-12.json
+results_dir: results
+test_data_dir: test-data          # throwaway; gitignored; cleaned each rep
+
+# Shared approval infrastructure.
+approval:
+  api_url_export: ETL-ApprovalApiUrl          # CFN export name (resolved live)
+  api_url_fallback: "https://1gwjdb9tel.execute-api.us-east-1.amazonaws.com/prod"
+  table: etl-pending-approvals
+  status_attr: status
+  pending_value: pending
+  workflow_type_attr: workflowType
+  sns_topic_name: etl-approval-notifications
+  approve_script: scripts/approve_all_jobs.sh   # reused flow (harness approves via API directly)
+
+# Bounded waits (seconds).
+timeouts:
+  approval_appear: 900            # max wait for pending approvals to appear
+  completion: 1800               # max wait for terminal completion
+  poll_interval: 10
+  cloudwatch_settle: 180         # initial settle after window before reading CW metrics
+  metrics_wait: 600              # then POLL up to this long for Lambda metrics to appear
+
+arms:
+  durable:
+    stack: etl-durable
+    workflow_type: durable-functions            # value written to approvals table
+    raw_bucket_output: RawBucketArn             # CFN output (ARN -> bucket name parsed live)
+    raw_bucket_fallback: etl-raw-data-bucket-975050220345
+    uploads_prefix: uploads/
+    trigger: s3_event                           # S3 ObjectCreated auto-invokes the orchestrator
+    functions:
+      - ETLDurableOrchestrator                  # exact name (no random suffix)
+    completion:
+      type: dynamodb_status
+      table: etl-job-metadata
+      status_attr: status
+      terminal_value: COMPLETED
+      timestamp_attr: timestamp                 # ISO8601, used to scope to this rep window
+    state_machine_arn: null                     # N/A: durable has zero state transitions
+
+  sfn_standard:
+    stack: etl-stepfn
+    workflow_type: step-functions               # value written to approvals table
+    raw_bucket_output: RawBucketName            # CFN output (bucket name directly)
+    raw_bucket_fallback: etl-stepfn-rawdatabucket-zkro7lq5krgv
+    uploads_prefix: uploads/
+    trigger: start_execution                    # NOTE: this bucket has NO S3 event; executions
+                                                # are started explicitly (per scripts/trigger_stepfunctions.sh)
+    state_machine_output: StateMachineArn
+    state_machine_arn_fallback: "arn:aws:states:us-east-1:975050220345:stateMachine:ETL-Pipeline-StateMachine"
+    function_name_prefixes:                     # resolved live to full names (random suffixes)
+      - etl-stepfn-ExtractFunction
+      - etl-stepfn-TransformFunction
+      - etl-stepfn-LoadFunction
+      - etl-stepfn-FinalizeFunction
+      - etl-stepfn-ApprovalFunction
+    completion:
+      type: sfn_execution                       # count SUCCEEDED executions in window
+      terminal_status: SUCCEEDED
+    dynamodb_tables:
+      - etl-stepfn-metadata
+    transition_sample_cap: 100
+
+# Step Functions Express is EXCLUDED BY DESIGN (5-min cap + no waitForTaskToken for
+# the ~20-min human approval). No Express arm is defined or run.

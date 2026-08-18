@@ -1,0 +1,35 @@
+{
+  "_comment": "us-east-1 pricing snapshot. EVERY value is pre-filled from typical published AWS list prices as a STARTING POINT and marked \"verify\": true. HP MUST confirm each against the cited source_url and set \"verify\": false before any number derived from this snapshot is used in the paper. Prices change and vary by region/tier.",
+  "snapshot_date": "2026-08-12",
+  "region": "us-east-1",
+  "currency": "USD",
+  "source_urls": [
+    "https://aws.amazon.com/lambda/pricing/",
+    "https://aws.amazon.com/step-functions/pricing/",
+    "https://aws.amazon.com/dynamodb/pricing/on-demand/",
+    "https://aws.amazon.com/s3/pricing/",
+    "https://aws.amazon.com/sns/pricing/"
+  ],
+  "lambda": {
+    "arm64": {
+      "request_per_million": {"value": 0.20, "verify": true, "unit": "USD per 1,000,000 requests"},
+      "gb_second": {"value": 0.0000133334, "verify": true, "unit": "USD per GB-second (arm64)"}
+    },
+    "free_tier": {"requests_per_month": 1000000, "gb_seconds_per_month": 400000, "applied": false}
+  },
+  "step_functions_standard": {
+    "state_transition_per_million": {"value": 25.00, "verify": true, "unit": "USD per 1,000,000 state transitions ($0.025 per 1,000)"},
+    "free_tier_transitions_per_month": 4000
+  },
+  "dynamodb": {
+    "write_request_unit_per_million": {"value": 1.25, "verify": true, "unit": "USD per 1,000,000 write request units (on-demand)"},
+    "read_request_unit_per_million": {"value": 0.25, "verify": true, "unit": "USD per 1,000,000 read request units (on-demand)"}
+  },
+  "s3": {
+    "put_per_1000": {"value": 0.005, "verify": true, "unit": "USD per 1,000 PUT/COPY/POST/LIST requests"},
+    "get_per_1000": {"value": 0.0004, "verify": true, "unit": "USD per 1,000 GET/SELECT requests"}
+  },
+  "sns": {
+    "publish_per_million": {"value": 0.50, "verify": true, "unit": "USD per 1,000,000 standard-topic publishes"}
+  }
+}
