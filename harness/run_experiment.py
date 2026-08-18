@@ -433,6 +433,8 @@ def main():
     ap.add_argument("--only-volume", type=int)
     ap.add_argument("--dry-run", action="store_true",
                     help="volume=5, 1 rep, both arms")
+    ap.add_argument("--fresh", action="store_true",
+                    help="force rerun even if a result file already exists (default resumes)")
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -459,17 +461,33 @@ def main():
         "collector": MetricCollector(region),
     }
 
+    results_dir = os.path.join(HERE, cfg["results_dir"])
     all_records = []
     for arm in arms:
         for volume in volumes:
             for rep in range(1, reps + 1):
+                run_id = f"{arm}-{volume}-r{rep}"
+                out_path = os.path.join(results_dir, f"{run_id}.json")
+                # RESUME: skip a run whose result already exists and recorded real
+                # completions, so an interrupted matrix continues on relaunch instead
+                # of redoing finished reps. Pass --fresh to force a full rerun.
+                if not args.fresh and os.path.exists(out_path):
+                    try:
+                        prev = json.load(open(out_path))
+                        if prev.get("workflows_completed"):
+                            log(f"skip {run_id}: already complete "
+                                f"({prev['workflows_completed']}/{prev.get('volume')})")
+                            all_records.append(prev)
+                            continue
+                    except Exception:
+                        pass  # unreadable/partial -> rerun it
                 try:
                     rec = run_one(arm, volume, rep, cfg, resolved, clients)
                     all_records.append(rec)
                 except Exception as e:
-                    log(f"ERROR run {arm}-{volume}-r{rep} failed: {e}")
+                    log(f"ERROR run {run_id} failed: {e}")
                     raise
-    log(f"done: {len(all_records)} records written")
+    log(f"done: {len(all_records)} records total")
 
 
 if __name__ == "__main__":

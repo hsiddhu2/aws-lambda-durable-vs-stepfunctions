@@ -1,3 +1,0 @@
-arm,volume,reps_total,reps_excluded_null,reps_with_full_total,per_workflow_known_mean_usd,per_workflow_known_ci95_halfwidth_usd,per_workflow_known_ci95_low_usd,per_workflow_known_ci95_high_usd,per_workflow_known_n,per_workflow_full_mean_usd,per_workflow_full_ci95_halfwidth_usd,sfn_transitions_gross_total,sfn_transition_cost_gross_usd,sfn_transition_cost_net_freetier_usd,null_components_union
-durable,5,1,0,0,3.299846045e-05,,,,1,,,,,,s3_gets;s3_puts
-sfn_standard,5,1,0,0,0.00016142309007370002,,,,1,,,30.0,0.00075,0.0,s3_gets;s3_puts
