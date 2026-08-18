@@ -75,11 +75,14 @@ class MetricCollector:
         total_invocations: Optional[float] = 0.0
         total_gb_seconds: Optional[float] = 0.0
         total_duration_ms: Optional[float] = 0.0
+        total_throttles: float = 0.0  # accuracy safeguard: nonzero => retry inflation risk
 
         for name in function_names:
             dims = [{"Name": "FunctionName", "Value": name}]
             inv = self._cw_sum("AWS/Lambda", "Invocations", dims, start, end)
             dur_ms = self._cw_sum("AWS/Lambda", "Duration", dims, start, end)
+            thr = self._cw_sum("AWS/Lambda", "Throttles", dims, start, end)
+            total_throttles += thr or 0.0
             mem = self.function_memory_mb(name)
 
             gb_s: Optional[float] = None
@@ -107,6 +110,7 @@ class MetricCollector:
             per_function.append({
                 "name": name, "memory_mb": mem, "invocations": inv,
                 "duration_ms_sum": dur_ms, "gb_seconds": gb_s,
+                "throttles": thr,
             })
 
         return {
@@ -114,6 +118,7 @@ class MetricCollector:
             "invocations": total_invocations,
             "duration_ms_sum": total_duration_ms,
             "gb_seconds": total_gb_seconds,
+            "throttles": total_throttles,
             "null_fields": null_fields,
         }
 
@@ -256,6 +261,7 @@ def build_record(arm: str, volume: int, rep: int, region: str, account: str,
         "invocations": lambda_result.get("invocations"),
         "duration_ms_sum": lambda_result.get("duration_ms_sum"),
         "gb_seconds": lambda_result.get("gb_seconds"),
+        "lambda_throttles": lambda_result.get("throttles"),
         "state_transitions": st_out,
         "dynamodb": {"writes": dynamodb.get("writes"), "reads": dynamodb.get("reads")},
         "s3": {"puts": s3.get("puts"), "gets": s3.get("gets")},

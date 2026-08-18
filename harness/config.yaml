@@ -10,6 +10,11 @@ account: "975050220345"
 volumes: [100, 1000, 10000]
 repetitions: 10
 reserved_concurrency: 50          # pinned on every arm function before each run
+# Inject workflows at this steady rate so concurrent demand stays UNDER reserved
+# concurrency. Prevents Lambda throttling -> Step Functions retry storms that would
+# inflate sfn invocation + state-transition counts (retries re-enter states). Keep
+# inject_rate_per_sec * avg_compute_seconds < reserved_concurrency (20 * ~1.5s = 30 < 50).
+inject_rate_per_sec: 20
 
 pricing_snapshot: pricing/pricing_2026-08-12.json
 results_dir: results

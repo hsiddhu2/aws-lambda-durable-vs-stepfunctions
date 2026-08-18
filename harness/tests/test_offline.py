@@ -174,11 +174,12 @@ def test_csv_written_to_tmp_then_deleted():
         with open(path) as f:
             content = f.read()
         check("csv has header", "per_workflow_known_mean_usd" in content)
-        # Ensure nothing was written under the real results dir by this test.
+        # Ensure THIS test wrote only under /tmp, never into the real results/ dir.
         real_results = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                     "results")
-        check("no synthetic file leaked to results/",
-              not os.path.exists(os.path.join(real_results, "summary.csv")))
+        check("test output path is under tmp, not results/",
+              os.path.commonpath([path, tmp]) == tmp and
+              os.path.commonpath([path, real_results]) != real_results)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         check("tmp cleaned up", not os.path.exists(tmp))

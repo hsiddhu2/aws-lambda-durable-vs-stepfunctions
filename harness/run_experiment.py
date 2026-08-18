@@ -131,18 +131,29 @@ def generate_csvs(count: int, out_dir: str, records: int = 100) -> list[str]:
     )
 
 
-def upload_csvs(s3, bucket: str, prefix: str, files: list[str]) -> list[str]:
+def upload_csvs(s3, bucket: str, prefix: str, files: list[str],
+                rate_per_sec: float = 0) -> list[str]:
+    """Upload CSVs. When rate_per_sec > 0, pace the puts (used for the durable arm where
+    the S3 upload IS the trigger, so pacing uploads paces the workflow injection)."""
     keys = []
+    delay = (1.0 / rate_per_sec) if rate_per_sec and rate_per_sec > 0 else 0
     for path in files:
         key = prefix + os.path.basename(path)
         s3.upload_file(path, bucket, key)
         keys.append(key)
-    log(f"uploaded {len(keys)} CSVs to s3://{bucket}/{prefix}")
+        if delay:
+            time.sleep(delay)
+    log(f"uploaded {len(keys)} CSVs to s3://{bucket}/{prefix}"
+        + (f" at ~{rate_per_sec}/s" if delay else ""))
     return keys
 
 
-def start_sfn_executions(sfn, arn: str, bucket: str, keys: list[str], run_tag: str) -> int:
+def start_sfn_executions(sfn, arn: str, bucket: str, keys: list[str], run_tag: str,
+                         rate_per_sec: float = 0) -> int:
+    """Start one execution per key. When rate_per_sec > 0, pace the starts so concurrent
+    Lambda demand stays under reserved concurrency (avoids throttle -> retry inflation)."""
     started = 0
+    delay = (1.0 / rate_per_sec) if rate_per_sec and rate_per_sec > 0 else 0
     for i, key in enumerate(keys):
         name = f"bench-{run_tag}-{i:05d}"
         try:
@@ -153,7 +164,10 @@ def start_sfn_executions(sfn, arn: str, bucket: str, keys: list[str], run_tag: s
             started += 1
         except Exception as e:
             log(f"WARN start_execution failed for {key}: {e}")
-    log(f"started {started}/{len(keys)} Step Functions executions")
+        if delay:
+            time.sleep(delay)
+    log(f"started {started}/{len(keys)} Step Functions executions"
+        + (f" at ~{rate_per_sec}/s" if delay else ""))
     return started
 
 
@@ -304,12 +318,18 @@ def run_one(arm: str, volume: int, rep: int, cfg: dict, resolved: dict, clients:
     # durable completion scan must compare against a naive UTC ISO string. A small backdate
     # guards against sub-second clock skew between this host and the Lambda.
     since_iso = (window_start.replace(tzinfo=None)).isoformat()
-    keys = upload_csvs(clients["s3"], bucket, arm_cfg["uploads_prefix"], files)
+    rate = cfg.get("inject_rate_per_sec", 0)
 
-    # 4. trigger
+    # 3b + 4. trigger, RATE-LIMITED so concurrent demand stays under reserved concurrency.
     if arm_cfg["trigger"] == "start_execution":
-        start_sfn_executions(clients["sfn"], resolved[arm]["sfn_arn"], bucket, keys, run_tag)
-    # durable: S3 event auto-invokes; nothing to do.
+        # sfn: uploading does NOT trigger (no S3 event), so upload fast, then pace the starts.
+        keys = upload_csvs(clients["s3"], bucket, arm_cfg["uploads_prefix"], files)
+        start_sfn_executions(clients["sfn"], resolved[arm]["sfn_arn"], bucket, keys,
+                             run_tag, rate_per_sec=rate)
+    else:
+        # durable: the S3 upload IS the trigger, so pace the uploads themselves.
+        keys = upload_csvs(clients["s3"], bucket, arm_cfg["uploads_prefix"], files,
+                           rate_per_sec=rate)
 
     # 5. wait for approvals + approve
     pending = wait_for_pending(clients["ddb_res"], cfg, arm_cfg, volume,
@@ -358,10 +378,17 @@ def run_one(arm: str, volume: int, rep: int, cfg: dict, resolved: dict, clients:
     s3_metrics = mc.s3_requests(bucket, window_start, window_end)
     sns_pub = mc.sns_publishes(cfg["approval"]["sns_topic_name"], window_start, window_end)
 
+    throttles = lam_result.get("throttles") or 0
+    if throttles > 0:
+        log(f"WARN {int(throttles)} Lambda throttles in-window — retry inflation risk; "
+            f"consider lowering inject_rate_per_sec or raising reserved_concurrency")
+
     notes = []
     if arm == "durable":
         notes.append("state_transitions is null by design: durable functions have zero SFN transitions.")
     notes.append("s3 request counts are null unless S3 request metrics are enabled on the bucket.")
+    notes.append(f"lambda_throttles={int(throttles)} in-window (nonzero indicates possible "
+                 f"retry inflation of invocation/transition counts).")
 
     record = build_record(
         arm=arm, volume=volume, rep=rep, region=cfg["region"], account=str(cfg["account"]),
