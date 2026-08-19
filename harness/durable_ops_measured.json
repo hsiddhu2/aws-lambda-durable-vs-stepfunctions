@@ -1,0 +1,60 @@
+{
+  "trials": [
+    {
+      "trial": 1,
+      "jobId": "etl-durable-20260819141559-measure_20260819141556.csv",
+      "window": {
+        "start": "2026-08-19T14:15:56.701990+00:00",
+        "end": "2026-08-19T14:17:03.231938+00:00"
+      },
+      "durable_executions_started": 1.0,
+      "operations": 9.0,
+      "bytes_written": 49607.0
+    },
+    {
+      "trial": 2,
+      "jobId": "etl-durable-20260819142114-measure_20260819142113.csv",
+      "window": {
+        "start": "2026-08-19T14:21:13.554572+00:00",
+        "end": "2026-08-19T14:21:39.675716+00:00"
+      },
+      "durable_executions_started": 1.0,
+      "operations": 9.0,
+      "bytes_written": 49607.0
+    },
+    {
+      "trial": 3,
+      "jobId": "etl-durable-20260819142550-measure_20260819142549.csv",
+      "window": {
+        "start": "2026-08-19T14:25:49.932027+00:00",
+        "end": "2026-08-19T14:26:14.039971+00:00"
+      },
+      "durable_executions_started": 1.0,
+      "operations": 9.0,
+      "bytes_written": 49938.0
+    },
+    {
+      "trial": 4,
+      "jobId": "etl-durable-20260819143025-measure_20260819143024.csv",
+      "window": {
+        "start": "2026-08-19T14:30:24.442466+00:00",
+        "end": "2026-08-19T14:30:47.927949+00:00"
+      },
+      "durable_executions_started": 1.0,
+      "operations": 9.0,
+      "bytes_written": 49607.0
+    },
+    {
+      "trial": 5,
+      "jobId": "etl-durable-20260819143459-measure_20260819143458.csv",
+      "window": {
+        "start": "2026-08-19T14:34:58.329914+00:00",
+        "end": "2026-08-19T14:35:21.281005+00:00"
+      },
+      "durable_executions_started": 1.0,
+      "operations": 9.0,
+      "bytes_written": 49607.0
+    }
+  ],
+  "clean_n": 5
+}

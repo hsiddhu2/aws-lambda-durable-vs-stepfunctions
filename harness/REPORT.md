@@ -45,6 +45,26 @@ whole workflow (more GB-s) vs SFN's short 512/256 MB step functions. Durable sti
 overall by a wide margin because it avoids transitions entirely. Memory was **left
 as-deployed** (not normalized) and read live per function, so GB-seconds reflect reality.
 
+## 2b. Durable-execution operations & checkpoint size — MEASURED
+
+Two durable-execution characteristics were originally *derived* from AWS's operation table
+applied to the handler's code path. They are now **measured directly** from the
+`AWS/Lambda` durable metrics (`DurableExecutionOperations`, `DurableExecutionStorageWrittenBytes`),
+driving **one workflow at a time in isolation** so each metric window contains exactly one
+execution (`measure_durable_ops.py`, evidence `durable_ops_measured.json`, n=5 clean trials):
+
+| Quantity | Derived (old) | **Measured** | Note |
+|----------|--------------:|-------------:|------|
+| Durable operations / workflow | 9 | **9.00 ± 0.00** (sd 0) | derived value **confirmed exactly** |
+| Checkpointed bytes / workflow | ~21 KB | **48.5 KB (49,673 B) ± 184** | derived value was **~2.3× too low** — use the measured figure |
+
+Caveat on retroactive backfill: reading these metrics over the original 60-run windows does
+**not** work — `DurableExecutionOperations` aggregates by `FunctionName` across every
+execution active in the (padded) window, so overlapping benchmark runs inflate it up to ~20×
+(per-workflow ops appeared to vary 10→198 with batch size, sd ≈ CV 92 %). Only the isolated
+single-execution measurement above is valid. `backfill_durable_metrics.py --discover` confirms
+the metrics exist; the naive backfill it performs is documented as contaminated and unused.
+
 ## 3. Free-tier scenario (Step Functions transitions)
 
 Reported gross AND net of the 4,000 transitions/month free tier (applied once at aggregate,
@@ -105,6 +125,10 @@ bleed across reps).
 - `results/figures/per_workflow_cost.png` — per-arm×volume cost with CI error bars.
 - `pricing/pricing_2026-08-12.json` — verified price snapshot (cited).
 - `finalize.py` — re-run to regenerate audit + tables from `results/`.
+- `measure_durable_ops.py` + `durable_ops_measured.json` — isolated measurement of durable
+  operations (9.00) and checkpoint bytes (48.5 KB) per workflow, n=5.
+- `backfill_durable_metrics.py` — `--discover` proves the durable metrics exist; its naive
+  retroactive backfill is documented as contaminated (§2b) and not used.
 
 ## 7. For HP
 
