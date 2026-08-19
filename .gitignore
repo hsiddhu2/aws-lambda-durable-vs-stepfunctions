@@ -85,3 +85,6 @@ result.json
 
 # Archive (internal data, not for public repo)
 archive/
+
+# Local Claude config/prompts
+.claude/
