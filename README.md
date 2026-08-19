@@ -219,6 +219,27 @@ S3 Upload → Step Functions State Machine
 - **Note**: Step Functions **Express is excluded by design** (5-min execution cap + no
   `.waitForTaskToken` callback for the ~20-min human approval)
 
+## 🔁 Reproducing the Benchmark
+
+The full experiment lives in [`harness/`](harness/) (see [`harness/README.md`](harness/README.md)
+and [`harness/RUNBOOK.md`](harness/RUNBOOK.md)). After deploying the three stacks above:
+
+```bash
+cd harness
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+python tests/test_offline.py                              # offline cost/CI math tests
+python run_experiment.py --config config.yaml --dry-run   # 5 real workflows per arm
+# full matrix (100/1,000/10,000 × R=10) — real spend + hours; see RUNBOOK.md:
+python run_experiment.py --config config.yaml
+python finalize.py                                        # integrity audit + tables
+```
+
+Every result in [`harness/results/`](harness/results/) is a live measurement; prices come
+from a dated, verified snapshot in [`harness/pricing/`](harness/pricing/). Full results and
+methodology: [`harness/REPORT.md`](harness/REPORT.md).
+
 ## 🧪 Testing
 
 ### Run Unit Tests
