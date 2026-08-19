@@ -54,6 +54,8 @@ Resources:
       CodeUri: ./src
       Handler: approval_handler.handler
       Runtime: python3.14
+      Architectures:
+        - arm64
       MemorySize: 256
       Timeout: 30
       Environment:
@@ -85,6 +87,18 @@ Resources:
             RestApiId: !Ref ApprovalApi
             Path: /reject/{jobId}
             Method: POST
+        ApproveJobLink:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApprovalApi
+            Path: /approve/{jobId}
+            Method: GET
+        RejectJobLink:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApprovalApi
+            Path: /reject/{jobId}
+            Method: GET
         GetJobStatus:
           Type: Api
           Properties:

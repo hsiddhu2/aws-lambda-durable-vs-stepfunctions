@@ -25,7 +25,7 @@ echo ""
 echo "Getting S3 bucket name from CloudFormation..."
 BUCKET=$(aws cloudformation describe-stacks \
   --stack-name etl-stepfn \
-  --query 'Stacks[0].Outputs[?OutputKey==`RawDataBucket`].OutputValue' \
+  --query 'Stacks[0].Outputs[?OutputKey==`RawBucketName`].OutputValue' \
   --output text)
 
 if [ -z "$BUCKET" ]; then

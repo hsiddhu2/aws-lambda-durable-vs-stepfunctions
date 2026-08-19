@@ -138,14 +138,12 @@ Job ID: {job_id}
 Records Processed: {summary.get('record_count', 'N/A')}
 Columns: {', '.join(summary.get('columns', []))}
 
-To approve this job:
-POST {approval_api_url}/approve/{job_id}
+ONE-CLICK ACTIONS (open in a browser):
+APPROVE: {approval_api_url}/approve/{job_id}
+REJECT:  {approval_api_url}/reject/{job_id}
 
-To reject this job:
-POST {approval_api_url}/reject/{job_id}
-
-To check status:
-GET {approval_api_url}/status/{job_id}
+Check status:
+{approval_api_url}/status/{job_id}
 
 Sample curl commands:
 # Approve

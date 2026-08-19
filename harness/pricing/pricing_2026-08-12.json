@@ -1,0 +1,37 @@
+{
+  "_comment": "us-east-1 pricing snapshot. All values VERIFIED against the official AWS pricing pages on 2026-08-17 (verified_date) and marked verify:false. DynamoDB on-demand corrected to the post-2024 rates (WRU 0.625/M, RRU 0.125/M). Re-confirm before final publication as prices can change.",
+  "snapshot_date": "2026-08-12",
+  "verified_date": "2026-08-17",
+  "region": "us-east-1",
+  "currency": "USD",
+  "source_urls": [
+    "https://aws.amazon.com/lambda/pricing/",
+    "https://aws.amazon.com/step-functions/pricing/",
+    "https://aws.amazon.com/dynamodb/pricing/on-demand/",
+    "https://aws.amazon.com/s3/pricing/",
+    "https://aws.amazon.com/sns/pricing/"
+  ],
+  "lambda": {
+    "arm64": {
+      "request_per_million": {"value": 0.20, "verify": false, "unit": "USD per 1,000,000 requests"},
+      "gb_second": {"value": 0.0000133334, "verify": false, "unit": "USD per GB-second (arm64, 20% below x86 0.0000166667)"}
+    },
+    "free_tier": {"requests_per_month": 1000000, "gb_seconds_per_month": 400000, "applied": false}
+  },
+  "step_functions_standard": {
+    "state_transition_per_million": {"value": 25.00, "verify": false, "unit": "USD per 1,000,000 state transitions ($0.025 per 1,000; $0.000025 each)"},
+    "free_tier_transitions_per_month": 4000
+  },
+  "dynamodb": {
+    "write_request_unit_per_million": {"value": 0.625, "verify": false, "unit": "USD per 1,000,000 write request units (on-demand, post-2024 rate)"},
+    "read_request_unit_per_million": {"value": 0.125, "verify": false, "unit": "USD per 1,000,000 read request units (on-demand, post-2024 rate)"}
+  },
+  "s3": {
+    "put_per_1000": {"value": 0.005, "verify": false, "unit": "USD per 1,000 PUT/COPY/POST/LIST requests (S3 Standard)"},
+    "get_per_1000": {"value": 0.0004, "verify": false, "unit": "USD per 1,000 GET/SELECT requests (S3 Standard)"}
+  },
+  "sns": {
+    "publish_per_million": {"value": 0.50, "verify": false, "unit": "USD per 1,000,000 standard-topic requests (each 64KB chunk = 1 request); first 1M/month free"},
+    "free_tier_requests_per_month": 1000000
+  }
+}

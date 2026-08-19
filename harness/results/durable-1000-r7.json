@@ -1,0 +1,46 @@
+{
+  "arm": "durable",
+  "volume": 1000,
+  "rep": 7,
+  "run_id": "durable-1000-r7",
+  "region": "us-east-1",
+  "account": "975050220345",
+  "window": {
+    "start": "2026-08-18T14:50:01.769369+00:00",
+    "end": "2026-08-18T14:59:08.147337+00:00"
+  },
+  "workflows_requested": 1000,
+  "workflows_completed": 1000,
+  "functions": [
+    {
+      "name": "ETLDurableOrchestrator",
+      "memory_mb": 1024,
+      "invocations": 2000.0,
+      "duration_ms_sum": 1603293.1398980005,
+      "gb_seconds": 1603.2931398980006,
+      "throttles": 0.0
+    }
+  ],
+  "invocations": 2000.0,
+  "duration_ms_sum": 1603293.1398980005,
+  "gb_seconds": 1603.2931398980006,
+  "lambda_throttles": 0.0,
+  "state_transitions": null,
+  "dynamodb": {
+    "writes": 9000.0,
+    "reads": 52937.5
+  },
+  "s3": {
+    "puts": 1856.0,
+    "gets": 1855.0
+  },
+  "sns": {
+    "publishes": 2000.0
+  },
+  "null_fields": [],
+  "notes": [
+    "state_transitions is null by design: durable functions have zero SFN transitions.",
+    "s3 request counts are null unless S3 request metrics are enabled on the bucket.",
+    "lambda_throttles=0 in-window (nonzero indicates possible retry inflation of invocation/transition counts)."
+  ]
+}
