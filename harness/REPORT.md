@@ -1,152 +1,113 @@
-# REPORT — harness integration + dry-run results
+# REPORT — cost benchmark results (final)
 
-**Status:** harness built, offline unit tests pass (38 assertions), dry run drove **5 real
-workflows per arm** and wrote real measured counters. **STOP point reached — awaiting HP
-review before any full-matrix run.**
+**Status:** COMPLETE. 60/60 measured runs (2 arms × 3 volumes × R=10) against real AWS,
+account `975050220345`, us-east-1. Integrity audit **CLEAN** (no record has a corrupting
+defect). Pricing snapshot verified (`pricing/pricing_2026-08-12.json`, all `verify:false`).
 
-Account `975050220345`, region `us-east-1`. Nothing in the deployed stacks was modified
-except: reserved concurrency, S3 uploads, triggering, approvals, plus two HP-requested
-usability changes to the approval API/emails (below).
+Reproduce the tables: `python finalize.py` (audits, writes `results/summary.csv` + figure).
 
 ---
 
-## 1. What was wired to the real code
+## 1. Headline — Durable Functions vs Step Functions Standard
 
-| Concern | Real value found in repo | Where |
-|---|---|---|
-| Durable pending-approval | table `etl-pending-approvals`, key `jobId`, `status="pending"`, `workflowType="durable-functions"`, `callbackId` | `durable-functions/src/handlers/etl_handler.py` `notify_reviewer()` |
-| Durable terminal completion | table `etl-job-metadata` (key `jobId` HASH + `timestamp` RANGE), `status="COMPLETED"` | `durable-functions/src/steps/finalize.py` |
-| Durable trigger | S3 `ObjectCreated` on `uploads/*.csv` auto-invokes the orchestrator | `durable-functions/template.yaml` S3 event |
-| SFN approval | `.waitForTaskToken`; `taskToken` stored in `etl-pending-approvals`, `workflowType="step-functions"` | `step-functions/statemachine/etl-workflow.asl.json`, `src/steps/approval_lambda.py` |
-| SFN terminal completion | execution status `SUCCEEDED` (also writes `etl-stepfn-metadata` `status="COMPLETED"`) | `src/steps/finalize_lambda.py` |
-| SFN billed transitions | 6 states entered per execution (Extract→Transform→Load→WaitForApproval→CheckApproval→Finalize) | measured via `GetExecutionHistory` |
-| Approval action | `POST /approve/{jobId}` (harness auto-approves all pending in code) | `scripts/approve_all_jobs.sh` flow, reused |
+Per-workflow cost (mean ± 95% CI, Student's t, n=10), and how much cheaper Durable is:
 
-The harness resolves buckets / state-machine ARN / function names **live from
-CloudFormation + Lambda** (function names carry random suffixes), falling back to the
-snapshot values in `config.yaml`.
+| Volume | Durable $/wf | Step Functions $/wf | **Durable cheaper by** |
+|-------:|-------------:|--------------------:|----------------------:|
+| 100    | 9.706e-05 ± 2.16e-05 | 2.267e-04 ± 6.03e-05 | **57.2 %** |
+| 1,000  | 4.394e-05 ± 1.17e-06 | 1.721e-04 ± 5.22e-06 | **74.5 %** |
+| 10,000 | 4.029e-05 ± 3.84e-07 | 1.679e-04 ± 2.71e-07 | **76.0 %** |
 
----
+The advantage **grows with volume** and asymptotes near ~76 %: Step Functions bills a fixed
+per-workflow state-transition cost that Durable does not incur, while Durable's fixed
+overheads amortize as volume rises.
 
-## 2. Repo facts that DIFFERED from the task spec — read these
+## 2. Why — component breakdown at 10,000 workflows (mean per 10k-workflow run)
 
-1. **`scripts/trigger_stepfunctions.sh` has a latent bug.** It reads CFN output key
-   `RawDataBucket`, but the `etl-stepfn` stack actually exports `RawBucketName`. The script
-   would get an empty bucket. The harness does **not** use the script; it resolves
-   `RawBucketName` correctly and starts executions itself.
-2. **The Step Functions raw bucket has NO S3-event trigger** (unlike durable). Executions
-   must be started explicitly with `start-execution` (bucket + key input). The harness does
-   this; uploading CSVs alone would not start any SFN execution.
-3. **SFN `ApprovalFunction` memory = 256 MB, not 512 MB** as the spec stated. The other 4
-   SFN functions are 512 MB; durable is 1024 MB. The harness reads **live** `MemorySize`
-   per function, so GB-seconds use the real values (see the dry-run JSON `functions[]`).
-4. **Both metadata tables use `status="COMPLETED"`** as the terminal marker (durable
-   `etl-job-metadata`, sfn `etl-stepfn-metadata`).
+| Component | Durable | Step Functions |
+|-----------|--------:|---------------:|
+| **State transitions** | **$0.00000** | **$1.50000** ← 90 % of SFN cost |
+| Lambda GB-seconds | $0.21407 | $0.01432 |
+| S3 PUT | $0.09312 | $0.09832 |
+| DynamoDB writes | $0.05236 | $0.03125 |
+| DynamoDB reads | $0.02256 | $0.01191 |
+| SNS publishes | $0.00932 | $0.00500 |
+| S3 GET | $0.00745 | $0.00787 |
+| Lambda requests | $0.00400 | $0.01000 |
+| **≈ total / 10k run** | **≈ $0.40** | **≈ $1.67** |
 
----
+**The entire gap is state transitions.** SFN Standard bills 6 transitions/workflow
+(Extract→Transform→Load→WaitForApproval→CheckApproval→Finalize) at $25/M = $1.50 per 10k
+run — 90 % of its cost. Durable has no state machine → $0.
 
-## 3. HP-requested changes applied to deployed infra (not measurement-affecting)
+Note the *inverse* on Lambda GB-seconds: Durable's single 1024 MB orchestrator holds the
+whole workflow (more GB-s) vs SFN's short 512/256 MB step functions. Durable still wins
+overall by a wide margin because it avoids transitions entirely. Memory was **left
+as-deployed** (not normalized) and read live per function, so GB-seconds reflect reality.
 
-- **Clickable approval links.** The emailed links opened as browser **GET**, but the API
-  only had **POST** → API Gateway returned `{"message":"Missing Authentication Token"}`.
-  Added **GET** `/approve/{jobId}` and `/reject/{jobId}` (POST unchanged). `approval_handler.py`
-  now treats only `/status` as a status read; `/approve` and `/reject` act on either method.
-  Redeployed `etl-shared-resources`, `etl-durable`, `etl-stepfn` (email wording).
-  The benchmark still auto-approves via `POST` in code — it never clicks links.
-- **SNS email flood avoided (Option A).** For the full load (≈100k emails at 10000×10), the
-  email subscription (`hpsiddhu@gmail.com`) was **unsubscribed** from
-  `etl-approval-notifications`. The topic still publishes (so SNS cost is still incurred and
-  measured); there is just no subscriber. Re-subscribe if manual approval is wanted later.
+## 3. Free-tier scenario (Step Functions transitions)
 
----
+Reported gross AND net of the 4,000 transitions/month free tier (applied once at aggregate,
+assuming this benchmark is the sole consumer of that account-level allowance):
 
-## 4. Operational fixes found during the dry run
+| Volume (×10 reps) | gross transition $ | net-of-free-tier $ |
+|------------------:|-------------------:|-------------------:|
+| 100   | $0.15  | $0.05  |
+| 1,000 | $1.50  | $1.40  |
+| 10,000| $15.00 | $14.90 |
 
-- **CloudWatch datapoint alignment.** Querying `get_metric_statistics` with the raw run
-  start (e.g. `04:39:38`) dropped the minute-aligned datapoint stamped `04:39:00` (before
-  `StartTime`) → false null for invocations/gb_seconds. `collect_metrics._cw_sum` now floors
-  start / ceils end to the minute (+60s pad) with `Period=60`. Verified: it returns the real
-  counters.
-- **Keep the Mac awake.** An earlier background run hit macOS idle-sleep (wall-clock jumped
-  hours, polls timed out). Runs now launch under `caffeinate -i`. The full matrix (hours of
-  wall-clock) MUST run on a machine that will not sleep.
-- Metric collection = 180 s settle, then **poll up to `metrics_wait` (600 s)** until
-  Invocations is readable, instead of a fixed guess.
+Free tier is only material at the smallest scale; negligible at 10k.
 
----
+## 4. Methodology
 
-## 5. Dry-run results — 5 real workflows per arm (both completed 5/5)
+- **Arms:** `durable` (single Lambda durable orchestrator), `sfn_standard` (state machine +
+  5 Lambdas). **Express excluded by design** (5-min cap + no `.waitForTaskToken` for the
+  ~20-min human approval).
+- **Matrix:** volumes 100/1,000/10,000 × **R=10**; mean ± 95 % CI (Student's t).
+- **Control:** reserved concurrency **pinned = 120 equally** on all 6 arm functions
+  (removes the concurrency-quota confound; cost is concurrency-independent). Workflows
+  injected at **50/s** so concurrent demand stays under the cap → **zero systematic
+  throttling** (recorded per run).
+- **Window isolation (sfn):** RUNNING executions drained to 0 before each rep's metric
+  window opens and before collection, so no cross-rep invocation bleed.
+- **Measurement:** every counter is a live CloudWatch / Step Functions read. Lambda
+  GB-seconds from real Duration × real per-function memory. SFN transitions counted from
+  `GetExecutionHistory` (sampled 100/rep, exact 6.0/exec, stdev 0). Prices only from the
+  dated snapshot.
+- **Execution:** two EC2 c5.xlarge runners (one per arm) in-region, self-healing +
+  resumable; all raw results in `results/` are the committed evidence trail.
 
-### `results/durable-5-r1.json`
-```
-window            2026-08-18T02:59:13Z → 03:02:28Z
-workflows_completed  5 / 5
-ETLDurableOrchestrator  memory_mb=1024  invocations=10  duration_ms_sum=9533.75  gb_seconds=9.5337
-invocations       10          (2 per workflow: initial + post-approval resume)
-gb_seconds        9.5337
-state_transitions null        (BY DESIGN — durable has no state machine; costed as 0)
-dynamodb          writes=25.0  reads=8.5
-sns.publishes     5.0
-s3                puts=null  gets=null
-null_fields       ["s3.gets", "s3.puts"]
-```
+## 5. Integrity — audit result
 
-### `results/sfn_standard-5-r1.json`
-```
-window            2026-08-18T03:02:29Z → 03:05:52Z
-workflows_completed  5 / 5
-5 functions       Extract/Transform/Load/Finalize = 512 MB, Approval = 256 MB (all read live)
-invocations       25          (5 functions × 5 workflows)
-gb_seconds        1.2555
-state_transitions gross=30  sampled=5/5  mean_per_exec=6.0  stdev=0.0
-                  method: GetExecutionHistory StateEntered count; gross = mean × volume
-dynamodb          writes=25.0  reads=6.5
-sns.publishes     5.0
-s3                puts=null  gets=null
-null_fields       ["s3.gets", "s3.puts"]
-```
+**AUDIT CLEAN**: no record has a corrupting defect (throttles that inflate counts,
+completion shortfall >0.5 %, invocation/transition deviation >0.5 %, or null on a critical
+counter). 14 **soft notes** disclosed (tolerable, not re-run):
 
-**Acceptance check:** `invocations`, `gb_seconds`, and (sfn) `state_transitions.gross` are
-all **non-null**. The only nulls are `s3.puts`/`s3.gets` (see §6).
+- `durable-100-r4, r9`: `s3.puts` null — S3 request-metric publish lag at low volume.
+- 8 sfn reps: `dynamodb.etl-stepfn-metadata.reads` null — DynamoDB metric lag.
+- `durable-10000-r5`: inv 19,999 vs 20,000 (−0.005 %, one metric-window edge).
+- `sfn-10000-r1`: 1 stochastic Lambda throttle, absorbed (inv 49,999, transitions exact
+  60,000 — no inflation), completed 9,999/10,000.
+- `sfn-10000-r3, r4`: inv 50,002 / 50,001 (+0.004 %) — one retry each, transitions exact.
 
-### Dry-run cost decomposition (NOT publication figures — n=1, prices unverified)
-Per-workflow *known* cost (readable components only), from `pricing_2026-08-12.json`:
-- durable ≈ **$0.000033** (dominated by Lambda GB-seconds)
-- sfn_standard ≈ **$0.000161** (dominated by state transitions: $0.00075 gross / 5)
-- Free-tier: 30 transitions < 4,000/month → **net transition cost $0** at this scale.
+Null components are excluded from that rep's *known* cost (never back-filled); their tiny
+cost contribution is the only thing affected, and the dominant components are exact.
 
-These match the expected direction but mean each metric only 1 rep, no CI. The full run
-(R=10) produces the mean ± 95% CI.
+Fixes applied live during the run (each surfaced by the detection harness, none reached the
+final dataset): approval rate-limiting (killed 162/300-throttle bursts), adaptive boto3
+retry (Step Functions `ListExecutions` throttling), and sfn window isolation (invocation
+bleed across reps).
 
----
+## 6. Deliverables in this branch
 
-## 6. Null fields — reported, not back-filled
+- `results/*.json` — 60 raw measured records (evidence trail).
+- `results/summary.csv` — aggregated mean ± 95 % CI + gross/net free-tier columns.
+- `results/figures/per_workflow_cost.png` — per-arm×volume cost with CI error bars.
+- `pricing/pricing_2026-08-12.json` — verified price snapshot (cited).
+- `finalize.py` — re-run to regenerate audit + tables from `results/`.
 
-Only `s3.puts` / `s3.gets` are null, in every record. **S3 request metrics are not enabled
-by default** on the buckets (they require a per-bucket request-metrics configuration, which
-itself costs money). Consequently the S3 request-cost component is `null` and excluded from
-the *known* cost. **HP decision needed:** either (a) enable S3 request metrics on the four
-buckets before the full run (adds a small metrics cost, gives real S3 counts), or (b) accept
-S3 request cost as an explicit, stated limitation and leave it null. Nothing is estimated.
+## 7. For HP
 
----
-
-## 7. What HP must verify / decide BEFORE the full run
-
-1. **Pricing (required).** All 8 values in `pricing/pricing_2026-08-12.json` are pre-filled
-   with typical list prices and flagged `"verify": true`. Confirm each against the cited
-   `source_url` for us-east-1 and set `"verify": false`. Until then no cost figure is
-   publication-ready (`cost_model` reports them under `prices_needing_verification`).
-   Checklist in `claims_ledger.md`.
-2. **S3 request metrics** — decide (a) enable or (b) accept-as-limitation (see §6).
-3. **Full-run logistics** — the 10000 volume drives 10,000 real workflows × 10 reps × 2 arms
-   (real spend, many hours). Confirm you want all three volumes, or start with 100 + 1000.
-   Machine must stay awake (`caffeinate`).
-4. **Reserved concurrency = 50** is pinned per arm function before each rep (durable: 1 fn;
-   sfn: 5 fns). Confirm that is the intended control value.
-
-Run the full matrix only after sign-off:
-```
-caffeinate -i python run_experiment.py --config config.yaml            # all
-caffeinate -i python run_experiment.py --config config.yaml --only-volume 100
-```
+Nothing is blocking. Optional before publication: re-confirm the 8 prices are still current
+(snapshot dated 2026-08-12, verified 2026-08-17), and decide whether to mention the soft-note
+metric-lag nulls in the paper's limitations (they move no headline number).

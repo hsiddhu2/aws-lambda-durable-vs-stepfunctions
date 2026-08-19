@@ -1,0 +1,84 @@
+{
+  "arm": "sfn_standard",
+  "volume": 10000,
+  "rep": 10,
+  "run_id": "sfn_standard-10000-r10",
+  "region": "us-east-1",
+  "account": "975050220345",
+  "window": {
+    "start": "2026-08-19T03:33:12.884688+00:00",
+    "end": "2026-08-19T03:55:56.337390+00:00"
+  },
+  "workflows_requested": 10000,
+  "workflows_completed": 10000,
+  "functions": [
+    {
+      "name": "etl-stepfn-ExtractFunction-UkgGRaSaemgw",
+      "memory_mb": 512,
+      "invocations": 10000.0,
+      "duration_ms_sum": 417867.0499647,
+      "gb_seconds": 208.93352498235,
+      "throttles": 0.0
+    },
+    {
+      "name": "etl-stepfn-TransformFunction-3QiQ8RpjZiYO",
+      "memory_mb": 512,
+      "invocations": 10000.0,
+      "duration_ms_sum": 39405.15999743001,
+      "gb_seconds": 19.702579998715006,
+      "throttles": 0.0
+    },
+    {
+      "name": "etl-stepfn-LoadFunction-TlNokoUcH4lZ",
+      "memory_mb": 512,
+      "invocations": 10000.0,
+      "duration_ms_sum": 435712.5799535002,
+      "gb_seconds": 217.8562899767501,
+      "throttles": 0.0
+    },
+    {
+      "name": "etl-stepfn-FinalizeFunction-1pDgwM59m2rd",
+      "memory_mb": 512,
+      "invocations": 10000.0,
+      "duration_ms_sum": 1034407.0997940006,
+      "gb_seconds": 517.2035498970004,
+      "throttles": 0.0
+    },
+    {
+      "name": "etl-stepfn-ApprovalFunction-oiniX2tUGo6t",
+      "memory_mb": 256,
+      "invocations": 10000.0,
+      "duration_ms_sum": 382866.3399749999,
+      "gb_seconds": 95.71658499374998,
+      "throttles": 0.0
+    }
+  ],
+  "invocations": 50000.0,
+  "duration_ms_sum": 2310258.2296846304,
+  "gb_seconds": 1059.4125298485656,
+  "lambda_throttles": 0.0,
+  "state_transitions": {
+    "gross": 60000.0,
+    "matched_executions": 10000,
+    "sampled_executions": 100,
+    "sample_mean_per_exec": 6.0,
+    "sample_stdev": 0.0,
+    "method": "GetExecutionHistory StateEntered count; gross = mean * volume"
+  },
+  "dynamodb": {
+    "writes": 50000.0,
+    "reads": 89270.5
+  },
+  "s3": {
+    "puts": 19807.0,
+    "gets": 19821.0
+  },
+  "sns": {
+    "publishes": 10000.0
+  },
+  "null_fields": [],
+  "notes": [
+    "s3 request counts are null unless S3 request metrics are enabled on the bucket.",
+    "lambda_throttles=0 in-window (nonzero indicates possible retry inflation of invocation/transition counts)."
+  ]
+}
