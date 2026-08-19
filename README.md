@@ -4,16 +4,22 @@ A real-world comparison of AWS Lambda Durable Functions and AWS Step Functions f
 
 ## 📊 Key Findings
 
-| Metric | Durable Functions | Step Functions | Difference |
-|--------|------------------|----------------|------------|
-| **Total Cost (1,000 workflows)** | $0.044 | $0.207 | **79% cheaper** |
-| **Cost per Workflow** | $0.000044 | $0.000207 | **79% cheaper** |
-| **Lambda Invocations** | 1,788 | 5,000 | 64% fewer |
-| **State Transitions** | 0 | 7,000 | N/A |
-| **Success Rate** | 100% | 100% | Tie |
-| **Zero-Cost Waiting** | ✅ Yes | ✅ Yes | Both |
+Measured on real AWS (us-east-1), **60 runs** (2 arms × 3 volumes × 10 repetitions),
+per-workflow cost as **mean ± 95% CI**. Full methodology and evidence: [`harness/REPORT.md`](harness/REPORT.md).
 
-**Bottom Line:** Durable Functions is 79% cheaper for this workload, primarily due to zero state transition costs.
+| Metric | Durable Functions | Step Functions Standard | Difference |
+|--------|------------------|-------------------------|------------|
+| **Cost per workflow @ 100** | $9.71×10⁻⁵ ± 2.2×10⁻⁵ | $2.27×10⁻⁴ ± 6.0×10⁻⁵ | **57.2% cheaper** |
+| **Cost per workflow @ 1,000** | $4.39×10⁻⁵ ± 1.2×10⁻⁶ | $1.72×10⁻⁴ ± 5.2×10⁻⁶ | **74.5% cheaper** |
+| **Cost per workflow @ 10,000** | $4.03×10⁻⁵ ± 3.8×10⁻⁷ | $1.68×10⁻⁴ ± 2.7×10⁻⁷ | **76.0% cheaper** |
+| **Lambda invocations / workflow** | 2 | 5 | 60% fewer |
+| **State transitions / workflow** | 0 | 6 | $0 vs ~90% of SFN cost |
+| **Success rate** | 100% | 100% | Tie |
+| **Zero-cost waiting during approval** | ✅ Yes | ✅ Yes | Both |
+
+**Bottom Line:** Durable Functions is **57–76% cheaper** (the advantage grows with volume and
+asymptotes near ~76%), because Step Functions Standard bills 6 state transitions per workflow —
+about **90% of its total cost** — while Durable Functions has no state machine and incurs none.
 
 ## 🎯 What This Repository Contains
 
@@ -113,6 +119,16 @@ aws s3 cp test-data/ s3://etl-raw-data-bucket-YOUR_AWS_ACCOUNT_ID/uploads/ --rec
 │   ├── architecture_diagram.png
 │   └── decision_framework.png
 │
+├── harness/                   # Cost-benchmark harness + measured results
+│   ├── run_experiment.py      # Orchestrator (drives real workflows)
+│   ├── collect_metrics.py     # Live CloudWatch/SFN metric collection
+│   ├── cost_model.py          # Priced cost decomposition
+│   ├── analysis.py            # Aggregate → mean ± 95% CI
+│   ├── finalize.py            # Integrity audit + tables
+│   ├── pricing/               # Dated, verified price snapshot
+│   ├── results/              # 60 raw measured records + summary.csv + figures
+│   └── REPORT.md              # Full results report
+│
 └── README.md                  # This file
 ```
 
@@ -130,8 +146,8 @@ This comparison is relevant for:
 
 ### Why Durable Functions is Cheaper
 
-1. **No state transition costs** ($0 vs $0.175 for Step Functions)
-2. **Fewer Lambda invocations** (1.788 vs 5 per workflow)
+1. **No state transition costs** ($0 vs $1.50 per 10,000 workflows for Step Functions — ~89% of its cost)
+2. **Fewer Lambda invocations** (2 vs 5 per workflow)
 3. **Zero-cost waiting** during approval periods
 
 ### When to Use Durable Functions
@@ -189,12 +205,19 @@ S3 Upload → Step Functions State Machine
 
 ## 📊 Experiment Methodology
 
-- **Volume**: 1,000 documents per system
+- **Volumes**: 100, 1,000, and 10,000 workflows per arm (1 CSV = 1 workflow)
+- **Repetitions**: 10 per (arm × volume); results reported as **mean ± 95% CI** (Student's t)
 - **Workflow**: Extract → Transform → Load → Approval → Finalize
-- **Approval wait**: Average 20 minutes
-- **Measurement**: 24-hour window
-- **Data source**: AWS CloudWatch metrics
-- **Cost calculation**: Actual AWS pricing
+- **Control**: reserved concurrency pinned equally (120) on all arm functions; workflows
+  injected at a paced rate so no throttling skews counts (recorded per run)
+- **Windows**: Step Functions rep windows isolated (executions drained between reps) so
+  Lambda counts don't bleed across runs
+- **Data source**: live AWS CloudWatch / Step Functions API reads; Lambda GB-seconds from
+  real duration × real per-function memory; SFN transitions from `GetExecutionHistory`
+- **Cost calculation**: dated, verified AWS pricing snapshot (`harness/pricing/`)
+- **Harness & full report**: [`harness/`](harness/) and [`harness/REPORT.md`](harness/REPORT.md)
+- **Note**: Step Functions **Express is excluded by design** (5-min execution cap + no
+  `.waitForTaskToken` callback for the ~20-min human approval)
 
 ## 🧪 Testing
 
@@ -240,21 +263,30 @@ sam delete --stack-name etl-shared-resources
 
 ## 📝 Cost Breakdown
 
-### Durable Functions ($0.044 per 1,000 workflows)
+Measured mean component cost **per 10,000-workflow run** (us-east-1, from the 60-run
+benchmark; see [`harness/results/summary.csv`](harness/results/summary.csv)).
 
-- Lambda Invocations: $0.000358
-- Lambda Duration: $0.0308
-- State Transitions: $0
-- DynamoDB: $0.003
-- S3 Operations: $0.010
+### Durable Functions (≈ $0.403 per 10,000 workflows)
 
-### Step Functions ($0.207 per 1,000 workflows)
+- Lambda requests: $0.004
+- Lambda duration (GB-seconds): $0.214
+- State transitions: **$0**
+- DynamoDB (writes + reads): $0.075
+- S3 operations (PUT + GET): $0.100
+- SNS: $0.009
 
-- Lambda Invocations: $0.001
-- Lambda Duration: $0.0179
-- State Transitions: $0.175 (84% of total)
-- DynamoDB: $0.003
-- S3 Operations: $0.010
+### Step Functions Standard (≈ $1.679 per 10,000 workflows)
+
+- Lambda requests: $0.010
+- Lambda duration (GB-seconds): $0.014
+- State transitions: **$1.500 (≈ 89% of total)**
+- DynamoDB (writes + reads): $0.043
+- S3 operations (PUT + GET): $0.106
+- SNS: $0.005
+
+> Note the inverse on Lambda duration: Durable's single 1024 MB orchestrator holds the whole
+> workflow (more GB-seconds) than Step Functions' short 512/256 MB step functions — yet Durable
+> still wins overall by a wide margin because it pays **zero** state-transition cost.
 
 ## 🤝 Contributing
 
